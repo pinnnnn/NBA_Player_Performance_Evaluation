@@ -1,0 +1,473 @@
+################################################################################################
+########### this is for bayesian estimation of unit against unit and home court effect #########
+################################################################################################
+setwd("~/pipeline1222/multinomial/")
+library(magrittr)
+library(dplyr)
+library(R2OpenBUGS)
+library(lattice)
+library(coda)
+library(data.table)
+library(glmnet)
+library(MASS)
+library(Matrix)
+library(plyr)
+
+############# load data & preprocess #############
+start = Sys.time()
+
+all.play = read.table("~/pipeline1222/find player new 2.0/all_play_corr.txt", header = T)
+season.index = read.table("~/pipeline1222/find player new 2.0/season.index.txt",
+                          header = F) %>% "["(,1)
+
+all.play$p.com.allowed = all.play$p.com.allowed %>% as.character()
+all.play$p.combination = all.play$p.combination %>% as.character()
+
+train.index = read.table("~/pipeline1222/train_index.txt") %>% "["(,1)
+
+player.threshold = 1000             ### set range of data
+combi.threshold = 20
+s.id = (season.index[2]+1):season.index[3]
+train.id = (season.index[2]+1):(train.index[3]-1)
+test.id = train.index[3]:season.index[3]
+
+
+season.play = all.play[s.id,]
+
+season.off.player = season.play$p.combination %>% 
+  as.character() %>% 
+  strsplit(., ", ") %>% do.call(c, .)
+season.off.player = season.off.player[season.off.player!=""] 
+
+season.def.player = season.play$p.com.allowed  %>% 
+  as.character() %>% 
+  strsplit(., ", ") %>% do.call(c, .)
+season.def.player = season.def.player[season.def.player!=""]
+
+player.off.poss = table(season.off.player)
+player.def.poss = table(season.def.player)
+
+which(player.off.poss>=player.threshold) %>% length()
+which(player.def.poss>=player.threshold) %>% length()
+
+
+player.enough = 
+  intersect(names(player.off.poss[which(player.off.poss >= player.threshold)]),
+            names(player.def.poss[which(player.def.poss >= player.threshold)]))  
+
+#### how to decide the threshold ###
+### 1. poss of p.combination>25
+### 2. poss of player > 1000
+
+
+#mm = group_by(all.play, p.combination) %>% do(table(.$points) %>% bind_rows())
+#nn = group_by(all.play, p.combination) %>% summarise(poss = length(points))
+
+## make table of count of 0 1 2 3 4 of every combination
+multino.0 = group_by(all.play[train.id,], home, p.combination, p.com.allowed) %>% 
+  do((table(.$points) %>% bind_rows()))
+n = group_by(all.play[train.id,], home, p.combination, p.com.allowed) %>% 
+  dplyr::summarise(poss = length(points))
+
+multino = multino.0[which(n$poss >= combi.threshold),] 
+n.com = (group_by(multino, home) %>% dplyr::summarise(n = length(`0`)))$n[1:2]
+
+multino = apply(multino, 2, function(x) {
+  x[which(is.na(x))] = 0
+  return(x)
+})
+
+points = matrix(c(multino[,which(colnames(multino) == "0")],
+                  multino[,which(colnames(multino) == "1")],
+                  multino[,which(colnames(multino) == "2")],
+                  multino[,which(colnames(multino) == "3")],
+                  multino[,which(colnames(multino) == "4")]) %>% as.numeric(), ncol = 5)
+
+poss = n$poss[which(n$poss >= combi.threshold)]
+
+
+ind = matrix(ncol = 2, nrow = max(n.com))
+m = 0
+for(h in 1:2){
+  for(i in 1:n.com[h]){
+    m = m+1
+    ind[i,h] = m
+  }
+}
+
+############ run bayesian model w/ openBUGS ############
+############ run bayesian model w/ openBUGS ############
+
+
+model = function(){
+  for(h in 1:2){
+    for(i in 1:n.com[h]){
+      points[ind[i,h], 1:5] ~ dmulti(p[ind[i,h], 1:5], poss[ind[i,h]])
+      p[ind[i,h], 1:5] ~ ddirich(mu[])
+    }
+    
+  }
+}
+
+mu <- c(.5,.08,.3,.11,.01)
+sigma <- diag(1,5)
+
+write.model(model, "multinomial.odc")
+my.model.file = "multinomial.odc"
+
+inits = function(){
+  list(p = matrix(c(.5,.08,.3,.11,.01), 
+                  nrow = sum(n.com), ncol = 5, byrow = T),
+       alpha = matrix(c(.5,.08,.3,.11,.01), 
+                      nrow = 2, ncol = 5, byrow = T))
+}
+
+mydata = list("points", "n.com", "poss", "ind", "mu")
+params = list("p", "alpha")
+
+
+sampler = bugs(data = mydata, inits = inits, 
+               parameters.to.save = params,
+               model.file = my.model.file , codaPkg = TRUE,
+               n.iter = 10000, n.burnin = 1000, n.thin = 10,
+               n.chains = 2, debug =F)
+
+multinomial.coda = read.bugs(sampler)
+save(multinomial.coda, file = "coda.rda")
+
+
+p.samples = array(rbind(multinomial.coda[[1]][,-1], multinomial.coda[[2]][,-1]), 
+                  c(nrow(multinomial.coda[[1]])*2,  # dim: c(iter, p, comibnation)
+                    5,(ncol(multinomial.coda[[1]])-1)/5))
+
+dimnames(p.samples)[[1]] = 1:(nrow(multinomial.coda[[1]])*2)
+dimnames(p.samples)[[2]] = paste0("p",1:5)
+
+
+effective = apply(p.samples, c(2,3), mean) %>% apply(., 2, function(x) x[2]+x[3]*2+x[4]*3+x[5]*4)
+variance = apply(p.samples, c(3), cov) %>% array(., c(5,5,dim(p.samples)[3])) %>% 
+  apply(., 3, function(x){
+    4*x[2,3]+6*x[2,4]+8*x[2,5]+12*x[3,4]+16*x[3,5]+24*x[4,5]+
+      x[1,1]+4*x[2,2]+9*x[3,3]+16*x[4,4]
+  })
+
+head(multino)
+label = paste(multino[,which(colnames(multino) == "home")],
+              multino[,which(colnames(multino) == "p.combination")],
+              multino[,which(colnames(multino) == "p.com.allowed")], sep = "; ")
+
+
+data = cbind(multino, effective = effective, variance = variance)
+colnames(data) = c(colnames(multino), "effective", "variance")
+colnames(data) = gsub("0","zero",colnames(data)) %>% 
+  gsub("1", "one",.) %>% 
+  gsub("2", "two",.) %>% 
+  gsub("3", "three",.) %>% 
+  gsub("4", "four",.)
+#colnames(data) = c("home","p.combination", "p.com.allowed",
+#                   "zero","two","one", "three","four",
+#                   "effective","variance")
+
+
+
+write.table(data, "combi.effective_s3.txt")
+############################ predict w/ bayesian model #####################
+
+
+########################### data preprocess ##############################
+#data = read.table("~/pipeline1222/multinomial/combi.effective_s3.txt")
+
+## find dummy matrix
+
+andrew = function(data, name.player){
+  
+  out.p.combination <-
+    strsplit(data$p.combination %>% 
+               as.character(), ", ") %>%
+    sapply(., function(x) {
+      name.player %in% x
+    }) %>%
+    t %>%
+    set_colnames(paste0("O_", name.player)) %>%
+    mapvalues(., c(T, F), c(1L, 0L))
+  out.p.com.allowed <-
+    strsplit(data$p.com.allowed %>% 
+               as.character(), ", ") %>%
+    sapply(., function(x) {
+      name.player %in% x
+    }) %>%
+    t %>%
+    set_colnames(paste0("D_", name.player)) %>%
+    mapvalues(., c(T, F), c(-1L, 0L))
+  out <- cbind(out.p.combination, out.p.com.allowed)
+  return(out)
+}
+data = as.data.frame(data)
+data$p.combination = as.character(data$p.combination)
+data$p.com.allowed = as.character(data$p.com.allowed)
+
+data0 = andrew(data,player.enough)
+class(data0)
+dim(data0)
+head(colnames(data0))
+
+
+data.train = data0
+home = (data$home=="H") %>% 
+  mapvalues(.,c(T,F),c(1L,0L)) 
+
+
+
+data.train = data.table(b0 = 1, data.train, home = home) %>%
+  apply(.,2,as.numeric) %>% 
+  as.data.table()
+dim(data.train)
+class(data.train)
+colnames(data.train) %>% head()
+
+colnames(data.train) = gsub(" |-|'", ".", colnames(data.train))
+
+data.train = sparse.model.matrix(~-1+., data.train)
+
+efficiency = data$effective %>% as.numeric()
+
+
+cv.ridge = cv.glmnet(data.train[,-1], efficiency,
+                     family = "gaussian", nlambda = 100, 
+                     intercept = T, alpha = 0, standardize = F)
+
+
+
+cv.lasso = cv.glmnet(data.train[,-1], efficiency,
+                     family = "gaussian", nlambda = 100, 
+                     intercept = T, alpha = 1, standardize = F)
+
+
+
+
+ridge = glmnet(data.train[,-1], efficiency,
+               family = "gaussian", lambda = cv.ridge$lambda.min, 
+               intercept = T, alpha = 0, standardize = F)
+
+
+
+lasso = glmnet(data.train[,-1], efficiency,
+               family = "gaussian", lambda = cv.lasso$lambda.min, 
+               intercept = T, alpha = 1, standardize = F)
+
+
+alpha = seq(from = 0, to = 1, by = .05)
+lambda.temp = numeric(length(alpha))
+mse.temp = numeric(length(alpha))
+for(i in 1:length(alpha)){
+  cv.elastic = cv.glmnet(data.train[,-1], efficiency,
+                         family = "gaussian", nlambda = 100,
+                         intercept = T, alpha = alpha[i],
+                         standardize = F)
+  lambda.temp[i] = cv.elastic$lambda.min
+  mse.temp[i] = cv.elastic$cvm %>% min()
+}
+min.id = mse.temp %>%
+  order(.) %>% "["(1)
+
+elastic = glmnet(data.train[,-1], efficiency,
+                 family = "gaussian", 
+                 lambda = lambda.temp[min.id], 
+                 intercept = T, alpha = alpha[min.id], standardize = F)
+elastic.alpha.min = alpha[min.id]
+
+data.train = as.matrix(data.train)
+## regression estimate
+beta.apm = ginv(t(data.train) %*% data.train) %*% t(data.train) %*% efficiency
+
+beta.ridge = c(ridge$a0, ridge$beta %>% as.vector())
+
+beta.lasso = c(lasso$a0, lasso$beta %>% as.vector())
+
+beta.elastic = c(elastic$a0, elastic$beta %>% as.vector())
+
+names(beta.ridge) = names(beta.lasso) =
+  names(beta.apm) = names(beta.elastic) =
+  colnames(data.train)
+
+cv.ridge$lambda.min
+cv.ridge$cvm %>% min()
+cv.lasso$lambda.min
+cv.lasso$cvm %>% min()
+lambda.temp[min.id]
+alpha[min.id]
+mse.temp[min.id]
+
+write.table(beta.apm, "train_beta_baye_apm.txt",row.names = T)
+write.table(beta.ridge, "train_beta_baye_ridge.txt",row.names = T)
+write.table(beta.lasso, "train_beta_baye_lasso.txt",row.names = T)
+write.table(beta.elastic, "train_beta_baye_elastic.txt",row.names = T)
+
+
+
+
+##
+data0 = andrew(all.play, player.enough)
+data.test = data0[test.id,]
+home = (all.play$home=="H") %>% 
+  "["(test.id) %>% 
+  mapvalues(.,c(T,F),c(1L,0L)) 
+data.test = data.table(b0 = 1, data.test, home = home) %>%
+  apply(.,2,as.numeric) 
+
+
+points.hat.apm = data.test %*% beta.apm
+points.hat.ridge = data.test %*% beta.ridge
+points.hat.lasso = data.test %*% beta.lasso
+points.hat.elastic = data.test %*% beta.elastic
+
+write.table(points.hat.apm, "test_p_hat_baye_apm.txt")
+write.table(points.hat.ridge, "test_p_hat_baye_ridge.txt")
+write.table(points.hat.lasso, "test_p_hat_baye_lasso.txt")
+write.table(points.hat.elastic, "test_p_hat_baye_elastic.txt")
+
+
+points.test = all.play$points[test.id]
+play.test = all.play[test.id,]
+
+
+## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## 
+total.analysis = function(beta, play.test, points.test, points.hat, player.enough){
+  error = points.test - points.hat
+  
+  
+  names(beta) = c("b0", paste0("O_", player.enough),
+                  paste0("D_", player.enough), "home")
+  
+  
+  
+  
+  ##
+  win.team = tapply(play.test$win.team %>% as.character(),
+                    play.test$game.id %>% as.character(), unique)
+  home.team = tapply(play.test$home.team %>% as.character(),
+                     play.test$game.id %>% as.character(), unique)
+  
+  answer = data.frame(game.id = names(win.team),
+                      win.team = win.team,
+                      home.team = home.team,
+                      answer = win.team == home.team)
+  row.names(answer) = NULL
+  setorder(answer,game.id)
+  
+  game.index = tapply(1:dim(play.test)[1], play.test$game.id %>% as.character(),
+                      function(x)min(x):max(x))
+  p.game = sapply(game.index,function(x){
+    play.test$points[x]
+  })
+  p.game.hat = sapply(game.index, function(x){
+    points.hat[x]
+  })
+  h.game = sapply(game.index,function(x){
+    play.test$home[x] == "H"
+  })
+  out.game = list()
+  for(i in 1:length(p.game)){
+    point.home = p.game[[i]][h.game[[i]]] %>% sum()
+    point.away = p.game[[i]][!h.game[[i]]] %>% sum()
+    
+    point.home.hat = p.game.hat[[i]][h.game[[i]]] %>% sum()
+    point.away.hat = p.game.hat[[i]][!h.game[[i]]] %>% sum()
+    out.game[[i]] = data.table(game_id = names(p.game)[i],
+                               point_home = point.home,
+                               point_away = point.away, 
+                               point_home_hat = point.home.hat,
+                               point_away_hat = point.away.hat)
+  }
+  out.game = bind_rows(out.game)
+  
+  
+  out.game = mutate(out.game, 
+                    diff = point_home-point_away, 
+                    diff.hat = point_home_hat-point_away_hat,
+                    win = ((point_home-point_away)>0)*1,
+                    win.hat = ((point_home_hat-point_away_hat)>0)*1,
+                    answer = (diff*diff.hat > 0))
+  
+  acc = (which(out.game$answer==T) %>% length())/dim(out.game)[1]
+  e = out.game$diff-out.game$diff.hat
+  rmse.game = sqrt(t(e)%*%e/length(e))
+  rmse.poss = sqrt(t(error)%*%error/length(error))
+  
+  
+  ## logistic test
+  
+  fit = glm(data = out.game,
+            win~point_home_hat+point_away_hat,
+            family = "binomial")
+  summary(fit)
+  
+  log.beta = fit$coefficients
+  win.hat = predict(fit)
+  
+  
+  prob.win.hat = exp(win.hat)/(1+exp(win.hat))
+  final.win.hat50 = (prob.win.hat>0.5) %>%
+    mapvalues(.,c(T,F),c(1L,0L))
+  p50.logistic = length(which(final.win.hat50 == out.game$win))/
+    length(out.game$win)
+  
+  set.seed(999)
+  M = 2000
+  correct.prob = numeric(M)
+  for(m in 1:M){
+    final.win.hat = numeric(length(prob.win.hat))
+    for(i in 1:length(prob.win.hat)){
+      final.win.hat[i] = sample(c(1,0),1,
+                                prob = c(prob.win.hat[i],1-prob.win.hat[i]),
+                                replace = T)
+    }
+    
+    correct.prob[m] = (which(final.win.hat==out.game$win) %>%
+                         length())/length(prob.win.hat)
+  }
+  acc.logistic = mean(correct.prob)
+  
+  
+  return(list(out.game=out.game,
+              rmse.game = rmse.game,
+              rmse.poss = rmse.poss,
+              prob.win.hat = prob.win.hat,
+              accuracy = acc,
+              acc.logistic = acc.logistic,
+              p50.logistic = p50.logistic))
+}
+
+
+
+
+output.apm = total.analysis(beta.apm %>% as.numeric(),
+                            play.test, points.test,
+                            points.hat.apm, player.enough)
+
+## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## 
+
+output.ridge = total.analysis(beta.ridge %>% as.numeric(), 
+                              play.test, points.test,
+                              points.hat.ridge, player.enough)
+
+## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
+
+output.lasso = total.analysis(beta.lasso %>% as.numeric(), 
+                              play.test, points.test, 
+                              points.hat.lasso, player.enough)
+
+## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ## ##
+
+output.elastic = total.analysis(beta.elastic %>% as.numeric(), 
+                                play.test, points.test, 
+                                points.hat.elastic, player.enough)
+
+
+save(output.apm, file = "output_baye_apm.rda")
+save(output.ridge, file = "output_baye_ridge.rda")
+save(output.lasso, file = "output_baye_lasso.rda")
+save(output.elastic, file = "output_baye_elastic.rda")
+
+Sys.time() - start
+
