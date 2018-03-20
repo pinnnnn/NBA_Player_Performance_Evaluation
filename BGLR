@@ -1,0 +1,33 @@
+library(BGLR)
+library(magrittr)
+library(dplyr)
+library(data.table)
+library(Matrix)
+
+
+# model
+niter = 500
+nburn = 100
+thin = 10
+folds = 2
+
+set.seed(100)
+train.id = sample(train.id, 1000)
+X = andrew(all.play[train.id,], player.enough, player = T)
+Y = andrew(all.play[train.id,], team, player = F)
+XR = cbind(X,Y) %>% apply(., 2,as.numeric)
+P = 2*length(player.enough)
+M = 2*length(all.play[train.id,]$team %>% levels())
+tau = 1/all.play$variance[train.id]
+N = length(train.id)
+points = all.play$points[train.id]
+
+start = Sys.time()
+
+BWLR = BLR(y = points, XR = XR, weights = tau,
+           prior =
+             list(varBR = list(df = 4, S=1)),
+           nIter = niter, burnIn = nburn, 
+           thin = 10)
+
+Sys.time() - start
