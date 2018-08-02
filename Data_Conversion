@@ -1,0 +1,702 @@
+setwd("~/NBA/find player new 2.0/")
+
+library(dplyr)
+library(magrittr)
+
+
+########################## starters ################################
+
+f.starters1 = function(dat1, dat, all.event, player.all){
+  
+  if(dat1$play %>% grep("shot clock",.) %>% length() == 0){
+    dat.starters1 = dat1$play %>% grep(paste0(all.event,"|End of the"),.) %>% dat1[.,]
+    dat.starters1$player = dat.starters1$play %>% gsub(all.event,"",.)
+  } else {
+    shot.clock.ind1 = dat1$play %>% grep("shot clock",.)
+    dat.starters1 = dat1$play[-shot.clock.ind1] %>% grep(paste0(all.event,"|End of the"),.) %>%
+      dat1[-shot.clock.ind1,][.,]
+    dat.starters1$player = dat.starters1$play %>% gsub(all.event,"",.)
+  }
+  End = dat$play %>% grep("End of the",.,value = T)
+  q.i = which(dat.starters1$play %in% End)
+  q.index1 = c(0, q.i)
+  
+  
+  player.out.no = dat.starters1$play %>% grep("enters +the +game +for",.) %>% dat.starters1$no[.]
+  
+  starters1 = matrix(nrow = length(q.i), ncol = 5)
+  for(j in 1:length(q.i)){
+    index = (q.index1[j]+1):(q.index1[j+1]-1)
+    player.in = (which(dat.starters1$no[index] %in% player.out.no)+q.index1[j]) %>% 
+      dat.starters1$play[.] %>% gsub(" +enters +the +game +for.*","",.)
+    player.out = (which(dat.starters1$no[index] %in% player.out.no)+q.index1[j]) %>%
+      dat.starters1$player[.]
+    level.out = player.out %>% unique()
+    first.out = character(length(level.out))
+    
+    for(i in 1:length(level.out)){
+      out.ind = which(player.out %in% level.out[i])
+      out.wrong.ind = which(player.in %in% level.out[i])
+      if(length(out.wrong.ind) == 0) first.out[i] = level.out[i] 
+      else if(min(out.wrong.ind) > min(out.ind)) first.out[i] = level.out[i]
+    }
+    first.out = which(!(first.out %in% "")) %>% first.out[.]
+    
+    in.wrong = which(!(player.in %in% first.out)) %>% player.in[.] %>% unique()
+    on.court0 = (which(!(dat.starters1$player[index] %in% in.wrong)) +q.index1[j])%>% 
+      dat.starters1$player[.] %>% unique()
+    on.court = which(on.court0 %in% player.all) %>% on.court0[.] 
+    starters1[j,] = c(first.out, on.court) %>% unique() %>% sort()
+    
+  }
+  
+  return(starters1)
+}
+
+
+
+
+
+
+f.starters2 = function(dat2, dat, all.event, player.all){
+  
+  if(dat2$play %>% grep("shot clock",.) %>% length() == 0){
+    dat.starters2 = dat2$play %>% grep(paste0(all.event,"|End of the"),.) %>% dat2[.,]
+    dat.starters2$player = dat.starters2$play %>% gsub(all.event,"",.)
+  } else {
+    
+    shot.clock.ind2 = dat2$play %>% grep("shot clock",.)
+    dat.starters2 = dat2$play[-shot.clock.ind2] %>% grep(paste0(all.event,"|End of the"),.) %>%
+      dat2[-shot.clock.ind2,][.,]
+    dat.starters2$player = dat.starters2$play %>% gsub(all.event,"",.)
+    
+  }
+  End.no = dat$play %>% grep("End of the",.)
+  q.i = c()
+  for(i in 1:length(End.no)){
+    q.i[i] = which(dat.starters2$no < End.no[i]) %>% max()
+  }
+  
+  q.index2 = c(0, q.i)
+  
+  
+  player.out.no = dat.starters2$play %>% grep("enters +the +game +for",.) %>% dat.starters2$no[.]
+  
+  starters2 = matrix(nrow = length(q.i), ncol = 5)
+  for(j in 1:length(q.i)){
+    index = (q.index2[j]+1):(q.index2[j+1])
+    player.in = (which(dat.starters2$no[index] %in% player.out.no)+q.index2[j]) %>% 
+      dat.starters2$play[.] %>% gsub(" +enters +the +game +for.*","",.)
+    player.out = (which(dat.starters2$no[index] %in% player.out.no)+q.index2[j]) %>%
+      dat.starters2$player[.]
+    level.out = player.out %>% unique()
+    first.out = character(length(level.out))
+    
+    for(i in 1:length(level.out)){
+      out.ind = which(player.out %in% level.out[i])
+      out.wrong.ind = which(player.in %in% level.out[i])
+      if(length(out.wrong.ind) == 0) first.out[i] = level.out[i] 
+      else if(min(out.wrong.ind) > min(out.ind)) first.out[i] = level.out[i]
+    }
+    first.out = which(!(first.out %in% "")) %>% first.out[.]
+    
+    in.wrong = which(!(player.in %in% first.out)) %>% player.in[.] %>% unique()
+    on.court0 = (which(!(dat.starters2$player[index] %in% in.wrong)) +q.index2[j])%>% 
+      dat.starters2$player[.] %>% unique()
+    on.court = which(on.court0 %in% player.all) %>% on.court0[.]
+    on.court = which(!(on.court %in% "")) %>% on.court[.]
+    
+    starters2[j,] = c(first.out, on.court) %>% unique() %>% sort()
+    
+  }
+  
+  return(starters2)
+  
+}
+
+
+############################# men changing ###################################
+
+
+f.men.change = function(five.people, player.in, player.out){
+  five.people.new = gsub(player.out, player.in, five.people) %>% sort()
+  return(five.people.new)
+}
+
+
+
+f.five.players = function(dat.all, data, starters){
+  
+  change.no = (data$play %>% grep("enters +the +game",.)) %>% data$no[.]
+  
+  change.ind = which(data$no%in%change.no)
+  player.in = data$play[change.ind] %>% gsub(" *enters +the +game.*","",.)
+  player.out = data$play[change.ind] %>% gsub(".*enters +the +game +for *","",.)
+  
+  
+  End.i = dat.all$play %>% grep("End of the",.)
+  q.i = c()
+  for(k in 1:(length(End.i)-1)){
+    q.i = c(q.i,which(data$no>End.i[k])%>%min())
+  }
+  q.index = c(1,q.i)
+  
+  
+  
+  all.ind = c(change.ind, q.index) %>% sort() %>% unique()
+  p.combination0 = matrix(nrow = length(all.ind), ncol = 5)
+  q = which(all.ind %in% q.index)
+  c = which(all.ind %in% change.ind)
+  p.combination0[q,] = starters[1:(length(q)),]
+  
+  for(i in 1:length(c)){
+    p.combination0[c[i],] = f.men.change(p.combination0[c[i]-1,],
+                                         player.in[i], player.out[i])
+  }
+  
+  
+  p.combination = matrix(nrow = nrow(data), ncol = 5)
+  
+  for(i in 1:(length(all.ind))){
+    if(all.ind[i+1] %>% is.na()) intv = all.ind[i] : nrow(data)
+    else intv = all.ind[i] : all.ind[i+1]
+    p.combination[intv,] = matrix(p.combination0[i,], ncol = 5,
+                                  nrow =length(intv), byrow = T)
+  }
+  
+  p.combination1 = apply(p.combination, 1, function(x){
+    paste0(x, collapse = ", ")
+  })
+  
+  return(cbind(data,p.combination = p.combination1))
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+########################## p.cross ##############################
+
+f.p.cross = function(p1, p2, dat, dat1, dat2){
+  
+  dat.com0 = rbind(dat1, dat2)
+  
+  ########## home team
+  p.com.home = character(nrow(dat.com0))
+  
+  ind1 = (dat.com0$no %>% sort()) %in% dat1$no
+  p.com.home[ind1] = p1$p.combination %>% as.character()
+  
+  ind.oppo1 = p.com.home == ""
+  p.com.home[1] = (1:length(p.com.home))[!ind.oppo1] %>% min() %>% p.com.home[.]
+  p.com.home[length(p.com.home)] = (1:length(p.com.home))[!ind.oppo1] %>%
+    max() %>% p.com.home[.]
+  
+  for(i in which(ind.oppo1 == T)[which(ind.oppo1 == T)>=2]){
+    p.com.home[i] = p.com.home[i-1]
+  }
+  
+  
+  ########## away team
+  p.com.away = character(nrow(dat.com0))
+  
+  ind2 = (dat.com0$no %>% sort()) %in% p2$no
+  p.com.away[ind2] = p2$p.combination %>% as.character()
+  
+  ind.oppo2 = p.com.away == ""
+  p.com.away[1] = (1:length(p.com.away))[!ind.oppo2] %>% min() %>% p.com.away[.]
+  p.com.away[length(p.com.away)] = (1:length(p.com.away))[!ind.oppo2] %>%
+    max() %>% p.com.away[.]
+  
+  for(i in which(ind.oppo2 == T)[which(ind.oppo2 == T)>=2]){
+    p.com.away[i] = p.com.away[i-1]
+  }
+  
+  return(data.frame(dat, p.com.home, p.com.away))
+  
+}
+
+#dat.cross = f.p.cross(p1,p2,dat,dat1,dat2)
+
+############################### points ###############################
+f.points = function(dat.cross){
+  ############ turnover
+  to.index = dat.cross$play %>% grep("bad pass|travel|turnover", .)
+  shotclock.index = dat.cross$play %>% grep("shot clock",.)
+  to.index.total = to.index[!(to.index %in% shotclock.index)]
+  
+  dat.cross$points = numeric(nrow(dat.cross))
+  dat.cross$points[to.index.total] = 0
+  
+  
+  ############ attempts
+  att.index = dat.cross$play %>% grep(" +misses +| +blocks +",.)  ### free throw miss will double
+  dat.cross$points[att.index] = 0
+  
+  ############ free throw
+  make.index = dat.cross$play %>% grep(" +makes +",.)
+  free.index = dat.cross$play %>% grep(" +free throw",.)
+  free.make.index = which(free.index %in% make.index) %>% free.index[.]
+  
+  dat.cross$points[free.make.index] = 1
+  
+  ############ 2 points
+  two.points.index = dat.cross$play %>% grep("layup|dunk|two point|1[0-9]-foot|2[01]-foot|[1-9]-foot",.)
+  two.points.make.index = which(two.points.index %in% make.index) %>% two.points.index[.]
+  
+  dat.cross$points[two.points.make.index] = 2
+  
+  ############ 3 points
+  three.points.index = dat.cross$play %>% grep("2[2-9]-foot|three point",.)
+  three.points.make.index = which(three.points.index %in% make.index) %>% three.points.index[.]
+  
+  dat.cross$points[three.points.make.index] = 3
+  
+  ############ and1 shooting foul
+  one.ft.index = dat.cross$play %>% grep(" +of +1",.)
+  one.ft.make.index = which(one.ft.index %in% make.index) %>% one.ft.index[.]
+  if(length(one.ft.make.index) != 0){
+    for(i in 1:length(one.ft.make.index)){
+      closest.make.index = make.index[make.index < one.ft.make.index[i]] %>% max()
+      space = (closest.make.index+1) : (one.ft.make.index[i]-1) %>% length()
+      dispatch = dat.cross$play[(closest.make.index+1) : (one.ft.make.index[i]-1)] %>%
+        grep(" +enters +|[Tt]imeout| +shooting +foul|[Tt]echnical +[Ff]oul| *[Tt]ech[Ff]oul| *taunting +technical",.) %>% length()
+      if(space == dispatch){
+        dat.cross$points[closest.make.index] = dat.cross$points[closest.make.index]+1
+      } 
+    }
+  }
+  
+  ############ technical
+  tech.ft.index = dat.cross$play %>% grep(" *technical *free *throw",.)
+  tech.ft.make.index = which(tech.ft.index %in% make.index) %>% tech.ft.index[.]
+  tech.foul.index = dat.cross$play %>% grep(" *[Tt]echnical *[Ff]oul| *[Tt]ech[Ff]oul| *taunting +technical",.)
+  
+  if(length(tech.ft.make.index)!=0){
+    for(i in 1:length(tech.ft.make.index)){
+      team = tech.ft.make.index[i] %>% dat.cross$team[.]
+      tech.oppo.index = which(tech.foul.index %in% which(dat.cross$team != team)) %>% tech.foul.index[.] 
+      before.tech.index = which(tech.oppo.index < tech.ft.make.index[i]) %>% tech.oppo.index[.] %>% max()
+      
+      dat.cross$points[before.tech.index] = 1
+    }
+  }
+  
+  ############ of 2 foul
+  foul.index = dat.cross$play %>% grep(" +[Ff]oul",.)
+  no.tech.index = foul.index[!(foul.index %in% tech.foul.index)]
+  one.of.two.index = dat.cross$play %>% grep(" +1 +of +2",.)
+  two.of.two.index = dat.cross$play %>% grep(" +2 +of +2",.)
+  
+  if(length(one.of.two.index) != 0){
+    for(i in 1:length(one.of.two.index)){
+      points = dat.cross$play[c(one.of.two.index[i],two.of.two.index[i])] %>%
+        grep(" +makes +",.) %>% length()
+      closest.foul.index = which(no.tech.index < one.of.two.index[i]) %>% no.tech.index[.] %>% max()
+      dat.cross$points[closest.foul.index] = points
+    }
+  }
+  
+  ############ of 3 foul
+  one.of.three.index = dat.cross$play %>% grep(" +1 +of +3",.)
+  two.of.three.index = dat.cross$play %>% grep(" +2 +of +3",.)
+  three.of.three.index = dat.cross$play %>% grep(" +3 +of +3",.)
+  
+  if(length(one.of.three.index)!=0){
+    for(i in 1:length(one.of.three.index)){
+      points = dat.cross$play[c(one.of.three.index[i], two.of.three.index[i], three.of.three.index[i])] %>% 
+        grep(" +makes +",.) %>% length()
+      closest.foul.index = no.tech.index[no.tech.index < one.of.three.index[i]] %>% max()
+      dat.cross$points[closest.foul.index] = points
+    }
+  }
+  return(dat.cross)
+}
+
+
+
+########################### turnover ###################################
+f.to = function(dat.complete, data1.index, data2.index){
+  
+  p.com.home.index = which(colnames(dat.complete) == "p.com.home")
+  p.com.away.index = which(colnames(dat.complete) == "p.com.away")  
+  
+  to.index = dat.complete$play %>% grep("bad pass|travel|turnover",.)
+  shotclock.index = dat.complete %>% grep("shot clock",.)
+  
+  to.index1 = data1.index[data1.index %in% to.index]
+  shotclock.index1 = data1.index[data1.index %in% shotclock.index]
+  to.index.total1 = to.index1[!(to.index1 %in% shotclock.index1)] 
+  
+  TO1 = cbind(dat.complete[to.index.total1, -p.com.away.index],
+              p.com.allowed = dat.complete[to.index.total1, p.com.away.index]) %>% as.matrix()
+  
+  to.index2 = data2.index[data2.index %in% to.index]
+  shotclock.index2 = data2.index[data2.index %in% shotclock.index]
+  to.index.total2 = to.index2[!(to.index2 %in% shotclock.index2)]
+  
+  TO2 = cbind(dat.complete[to.index.total2 ,-p.com.home.index],
+              p.com.allowed = dat.complete[to.index.total2, p.com.home.index]) %>% as.matrix()
+  
+  TO = rbind(TO1, TO2)
+  colnames(TO)[which(colnames(TO) == "p.com.home")] = "p.combination"
+  
+  return(TO)
+}
+
+
+############################# shot #################################
+f.shot = function(dat.complete, data1.index, data2.index){
+  
+  shot.index = dat.complete$play %>% 
+    grep("layup|dunk|two point|1[0-9]-foot|2[01]-foot|[1-9]-foot|2[2-9]-foot|three point|+jumper| +jumpshot| +shot",.)
+  
+  p.com.home.index = which(colnames(dat.complete) == "p.com.home")
+  p.com.away.index = which(colnames(dat.complete) == "p.com.away")
+  
+  shot.index1 = data1.index[data1.index %in% shot.index]
+  shot1 = cbind(dat.complete[shot.index1, -p.com.away.index],
+                p.com.allowed = dat.complete[shot.index1, p.com.away.index]) %>% as.matrix()
+  
+  shot.index2 = data2.index[data2.index %in% shot.index]
+  shot2 = cbind(dat.complete[shot.index2, -p.com.home.index],
+                p.com.allowed = dat.complete[shot.index2, p.com.home.index]) %>% as.matrix()
+  
+  shot = rbind(shot1, shot2)
+  colnames(shot)[which(colnames(shot) == "p.com.home")] = "p.combination"
+  
+  return(shot)
+}
+
+############################ foul ##################################
+f.foul = function(dat.complete, data1.index, data2.index){
+  
+  foul.index = dat.complete$play %>% grep(" +[Ff]oul",.)
+  tech.foul.index = dat.complete$play %>% grep(" *[Tt]echnical *[Ff]oul| *[Tt]ech[Ff]oul| *taunting +technical",.)
+  no.tech.index = foul.index[!(foul.index %in% tech.foul.index)]
+  
+  one.of.two.index = dat.complete$play %>% grep(" +1 +of +2",.)
+  of.two.foul.index = numeric(length(one.of.two.index))
+  
+  if(length(one.of.two.index)!=0){
+    for(i in 1:length(one.of.two.index)){
+      of.two.foul.index[i] = no.tech.index[no.tech.index < one.of.two.index[i]] %>% max()
+    }
+  }
+  
+  one.of.three.index = dat.complete$play %>% grep(" +1 +of +3",.)
+  of.three.foul.index = numeric(length(one.of.three.index))
+  
+  if(length(one.of.three.index)!=0){
+    for(i in 1:length(one.of.three.index)){
+      of.three.foul.index[i] = no.tech.index[no.tech.index < one.of.three.index[i]] %>% max()
+    }
+  }
+  
+  tech.ft.index = dat.complete$play %>% grep(" *technical *free *throw",.)
+  tech.foul.index = dat.complete$play %>% grep(" *[Tt]echnical *[Ff]oul| *[Tt]ech[Ff]oul| *taunting +technical",.)
+  
+  tech.add.index = numeric(length(tech.ft.index))
+  if(length(tech.ft.index)!=0){
+    for(i in 1:length(tech.ft.index)){
+      tech.add.index[i] = tech.foul.index[tech.foul.index < tech.ft.index[i]] %>% max()
+    }
+  }
+  
+  
+  p.com.home.index = which(colnames(dat.complete) == "p.com.home")
+  p.com.away.index = which(colnames(dat.complete) == "p.com.away")
+  
+  
+  foul1 = cbind(
+    data1.index[data1.index %in% c(of.two.foul.index, of.three.foul.index, tech.add.index)] %>%
+      dat.complete[., -p.com.home.index],
+    p.com.allowed = data1.index[data1.index %in% c(of.two.foul.index, of.three.foul.index, tech.add.index)] %>%
+      dat.complete[., p.com.home.index]) %>% as.matrix()
+  
+  foul2 = cbind(
+    data2.index[data2.index %in% c(of.two.foul.index, of.three.foul.index, tech.add.index)] %>% 
+      dat.complete[., -p.com.away.index],
+    p.com.allowed = data2.index[data2.index %in% c(of.two.foul.index, of.three.foul.index, tech.add.index)] %>% 
+      dat.complete[., p.com.away.index]) %>% as.matrix()
+  
+  foul = rbind(foul1, foul2)
+  
+  colnames(foul)[which(colnames(foul) == "p.com.away")] = "p.combination"
+  
+  return(foul)
+}
+
+
+### add quarter id
+f.quarter.id = function(dat){
+  quarter.id = integer(dim(dat)[1])
+  q.i = dat$play %>% grep("[Ee]nd of the [1-9]",.)
+  quarter.id[1:max(q.i)] = rep(1:(length(q.i)), c(q.i[1],diff(q.i)))
+  quarter.id[min((max(q.i)+1), dim(dat)[1]) : dim(dat)[1]] = length(q.i)
+  return(quarter.id)
+}
+
+
+### add play_time elapsed
+f.play.elapsed = function(dat){
+  first.play = group_by(dat, quarter.id) %>% summarise(first(time)) %>% "[["(2) 
+  start.time = c(rep(strptime("12:00","%M:%S"), 4), 
+                 rep(strptime("05:00", "%M:%S"),length(first.play)-4)) 
+  play.elapsed0 = tapply(dat$time, INDEX = dat$quarter.id, function(time){
+    -diff(strptime(time, "%M:%S"))
+  }) 
+  play.elapsed = list()
+  for(i in 1:length(first.play)){
+    play.elapsed[[i]] = c(start.time[i]-strptime(first.play[i],"%M:%S"),
+                       play.elapsed0[[i]]) 
+  }
+  play.elapsed = do.call(c, play.elapsed) %>% as.numeric()
+  return(play.elapsed)
+}
+
+### add quarter_time elapsed
+f.quarter.elapsed = function(dat){
+  first.play = group_by(dat, quarter.id) %>% summarise(first(time)) %>% "[["(2) 
+  start.time0 = c(rep(strptime("12:00","%M:%S"), 4), 
+                 rep(strptime("05:00", "%M:%S"),length(first.play)-4)) 
+  play.times = group_by(dat, quarter.id) %>% summarise(length(time))
+  start.time = rep(start.time0, play.times[[2]])
+  quarter.elapsed = (start.time - strptime(dat$time, "%M:%S")) %>% as.numeric()
+  return(quarter.elapsed)
+}
+############################## handle player list ################################
+
+player01314 = read.table("~/NBA/find player new/player1314.txt", fill=T, row.names = NULL, header = F)
+player01415 = read.table("~/NBA/find player new/player1415.txt", fill=T, row.names = NULL, header = F)
+player01516 = read.table("~/NBA/find player new/player1516.txt", fill=T, row.names = NULL, header = F)
+player0.all = rbind(player01314, player01415, player01516)
+player.all = which(!player0.all[,2] == "") %>% player0.all[.,2] %>% unique() %>% as.character()
+
+fix.names = matrix(c("Tim Hardaway", "Tim Hardaway Jr.",
+                     "Jeffery Taylor", "Jeff Taylor",
+                     "Nene Hilario","Nene",
+                     "Luc Mbah a Moute", "Luc Richard Mbah a Moute",
+                     "Roger Mason", "Roger Mason Jr.",
+                     "Hamady N'Diaye", "Hamady Ndiaye",
+                     "Nando De Colo", "Nando de Colo",
+                     "Lou Williams", "Louis Williams",
+                     "Otto Porter", "Otto Porter Jr.",
+                     "Johnny O'Bryant", "Johnny O'Bryant III",
+                     "Kelly Oubre", "Kelly Oubre Jr.",
+                     "Frank Kaminsky", "Frank Kaminsky III",
+                     "Larry Drew", "Larry Drew II",
+                     "Slava Kravtsov", "Viacheslav Kravtsov",
+                     "Glen Rice", "Glen Rice Jr.",
+                     "Glenn Robinson", "Glenn Robinson III",
+                     "Walter Tavares", "Edy Tavares",
+                     "JJ Hickson", "J.J. Hickson",
+                     "Jj Obrien", "J.J. O'Brien"), ncol = 2, byrow = T)
+colnames(fix.names) = c("names0","names1")
+
+
+correct.name = function(player, fix.names = fix.names){
+  for(i in 1:nrow(fix.names)){
+    player = gsub(paste0(fix.names[i,'names1'],"$"), fix.names[i,'names0'],
+                  player) %>% 
+      gsub(paste0(fix.names[i,'names1'],","),paste0(fix.names[i,'names0'],","),.) %>% 
+      gsub(paste0(fix.names[i,'names0'],"$"),fix.names[i,'names1'],.) %>% 
+      gsub(paste0(fix.names[i,'names0'],","),paste0(fix.names[i,'names1'],","),.)
+  }
+  return(player)
+}
+
+player.all = correct.name(player.all, fix.names)
+player.1314 = which(!player01314[,2] == "") %>%
+  player01314[.,2] %>%  as.character() %>% 
+  correct.name(., fix.names)
+player.1415 = which(!player01415[,2] == "") %>%
+  player01415[.,2] %>%  as.character() %>% 
+  correct.name(., fix.names)
+player.1516 = which(!player01516[,2] == "") %>%
+  player01516[.,2] %>%  as.character() %>% 
+  correct.name(., fix.names)
+
+
+
+##############################################################
+
+f.extract.complete = function(files.name, player.all){
+  all.event = " *makes.*| *misses.*| *defensive +rebound.*| *offensive +rebound.*| *lost +ball.*| *3 +second.*| *bad +pass.*| *out +of +bound.*| *traveling.*| *disc +dribble.*| *turnover.*| *offensive +goaltending.*|.*the +game +for *| *shooting +foul.*| *kicked +ball.*| *loose +ball +foul.*| *personal.+foul.*| *offensive +foul.*|.*blocks *| *'s.*| *steps +out +of +bound.*| *backcourt.*| *back +court +turnover.*| +possession +lost +ball +turnover.*| +illegal +screen +turnover.*| +double +dribble.*| +jumpball +violation.*| +palming.*| *taunting technical.*| *double +personal +foul.*| *double +personal +turnover.*| *5 +sec +inbound.*"
+  
+  pp.temp = list()
+  ee.temp = list()
+  for(i in 1:length(files.name)){
+    ee.temp[[i]] = tryCatch({
+      dat = read.csv(files.name[i] %>% paste0(.,".csv"))
+      
+      team1 = dat$team[1]%>%as.character()
+      team2 = levels(dat$team)[levels(dat$team)!=team1]
+      dat1 = dat %>% filter(team == team1)
+      dat2 = dat %>% filter(team == team2)
+      
+      if(dat1$play %>% grep("shot clock",.) %>% length() == 0){
+        dat.starters1 = dat1$play %>% grep(paste0(all.event,"|End of the"),.) %>% dat1[.,]
+        dat.starters1$player = dat.starters1$play %>% gsub(all.event,"",.)
+      } else {
+        shot.clock.ind1 = dat1$play %>% grep("shot clock",.)
+        dat.starters1 = dat1$play[-shot.clock.ind1] %>% grep(paste0(all.event,"|End of the"),.) %>%
+          dat1[-shot.clock.ind1,][.,]
+        dat.starters1$player = dat.starters1$play %>% gsub(all.event,"",.)
+      }
+      
+      
+      if(dat2$play %>% grep("shot clock",.) %>% length() == 0){
+        dat.starters2 = dat2$play %>% grep(paste0(all.event,"|End of the"),.) %>% dat2[.,]
+        dat.starters2$player = dat.starters2$play %>% gsub(all.event,"",.)
+      } else {
+        
+        shot.clock.ind2 = dat2$play %>% grep("shot clock",.)
+        dat.starters2 = dat2$play[-shot.clock.ind2] %>% grep(paste0(all.event,"|End of the"),.) %>%
+          dat2[-shot.clock.ind2,][.,]
+        dat.starters2$player = dat.starters2$play %>% gsub(all.event,"",.)
+        
+      }
+      
+      pp.temp[[i]] = c(dat.starters1$player %>% as.character(),
+                       dat.starters2$player %>% as.character())
+      NULL
+      
+    }, error = function(e){
+      print(paste("my error", e, "_",i))
+      return(i)
+    }, warning = function(w){
+      print(paste("my warning", w, "_",i))
+      return(i)
+    }, finally = {})
+  }
+  
+  pp = do.call(c,pp.temp)
+  pp = pp %>% unique()
+  jr.family = pp %>% grep("Jr\\.$",., value = T)
+  
+  lack.of.jr = player.all[which(player.all %in% (jr.family %>% gsub(" +Jr\\.","",.)))]
+  player.all[which(player.all %in% lack.of.jr)] = paste(lack.of.jr," Jr.", sep = "")
+  
+  ##############################################################
+  
+  season.play.temp = list()
+  error.temp = list()
+  
+  for(i in 1:length(files.name)){
+    
+    error.temp[[i]] = tryCatch({
+      
+      dat = read.csv(files.name[i] %>% paste0(.,".csv"))
+      dat$game.id = i                      ############ add game id
+      dat$quarter.id = f.quarter.id(dat)   ############ add quarter id
+      dat$play.elapsed = f.play.elapsed(dat)     ############ add play-time elapsed
+      dat$game.elapsed = cumsum(dat$play.elapsed)############ add game-time elapsed
+      dat$quarter.elapsed = f.quarter.elapsed(dat)########### add quarter-time elapsed
+      
+      colnames(dat)[1] = "no"
+      
+      team1 = dat$team[1]%>%as.character()
+      team2 = levels(dat$team)[levels(dat$team)!=team1]
+      dat$home.team = team1
+      dat$away.team = team2
+      dat$home.score = dat$score %>% as.character() %>%       ####### add score of home team
+        strsplit(" - ") %>% sapply(as.numeric) %>% "["(2,)    
+      dat$away.score = dat$score %>% as.character() %>%       ####### add score of away team
+        strsplit(" - ") %>% sapply(as.numeric) %>% "["(1,)    
+      win.index = ((dat$home.score[dim(dat)[1]]-              ####### add winning team
+                      dat$away.score[dim(dat)[1]])>0)+1
+      dat$win.team = c(team2, team1)[win.index]
+      
+      dat1 = dat %>% filter(team == team1)
+      dat2 = dat %>% filter(team == team2)
+      data1.index = which(dat$team == team1)
+      data2.index = which(dat$team != team1)
+      
+      
+      starters1 = f.starters1(dat1, dat, all.event, player.all)
+      starters2 = f.starters2(dat2, dat, all.event, player.all)
+      
+      p1 = f.five.players(dat, dat1, starters1)
+      p2 = f.five.players(dat, dat2, starters2)
+      dat.complete = f.p.cross(p1, p2, dat, dat1, dat2) %>% f.points(.)
+      dat.complete$home = ifelse(dat.complete$team == team1, "H", "A") ###### if the p.com is home team or visitor
+      
+      to = f.to(dat.complete, data1.index, data2.index)
+      shot = f.shot(dat.complete, data1.index, data2.index)
+      foul = f.foul(dat.complete, data1.index, data2.index)
+      
+      season.play.temp[[i]] = rbind(to, shot, foul) %>% as.data.frame()
+      season.play.temp[[i]] = season.play.temp[[i]]$no %>% order() %>% 
+        season.play.temp[[i]][.,]
+      
+      NULL
+      
+      
+    }, error = function(e){
+      print(paste("MY_ERROR", e, "-", i))
+      return(i)
+    },warning = function(w){
+      print(paste("MY_WARNING", w, "-", i))
+      return(i)
+    }, finally = {} )
+    
+  }
+  
+  
+  
+  error = do.call(c, error.temp)
+  season.play = do.call(rbind, season.play.temp)
+  
+  return(list(season.play = season.play, error = error))
+  
+}
+
+
+
+
+
+
+#############################################3###########################
+
+
+
+
+files.name1314 = read.csv("~/NBA/13-14/file.name.csv")[,2]
+files.name1415 = read.csv("~/NBA/14-15/file.name.csv")[,2]
+files.name1516 = read.csv("~/NBA/15-16/file.name.csv")[,2]
+
+setwd("~/NBA/13-14/")
+season.1314 = f.extract.complete(files.name1314, player.all)
+setwd("~/NBA/14-15/")
+season.1415 = f.extract.complete(files.name1415, player.all)
+setwd("~/NBA/15-16/")
+season.1516 = f.extract.complete(files.name1516, player.all)
+
+
+
+setwd("~/NBA/find player new 2.0/")
+write.table(season.1314$season.play, "season_play_1314.txt", row.names = F)
+write.table(season.1415$season.play, "season_play_1415.txt", row.names = F)
+write.table(season.1516$season.play, "season_play_1516.txt", row.names = F)
+
+
+
+all.play = rbind(season.1314$season.play, season.1415$season.play, season.1516$season.play)
+
+
+
+write.table(player.1314, "~/NBA/find player new 2.0/player1314_corr.txt",
+            row.names = F, col.names = F)
+write.table(player.1415, "~/NBA/find player new 2.0/player1415_corr.txt",
+            row.names = F, col.names = F)
+write.table(player.1516, "~/NBA/find player new 2.0/player1516_corr.txt",
+            row.names = F, col.names = F)
